@@ -5,5 +5,7 @@ adapt the model to work with text data and perform next word prediction.
 
 Recources:
 The Relational Bottleneck as an Inductive Bias for Efficient Abstraction
+
 Emergent Symbols Through Binding in External Memory
+
 A Memory-Augmented Neural Network Model of Abstract Rule Learning
