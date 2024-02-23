@@ -3,7 +3,7 @@ from keras.layers import LSTM, Dense
 from modules import *
 
 #recreate distribution of three in tensorflow
-
+# TODO: implement temporal context norm, use @tf.function decorator
 class ESBN(tf.keras.Model):
     def __init__(self, y_dim):
         super(ESBN, self).__init__()
@@ -33,6 +33,10 @@ class ESBN(tf.keras.Model):
             x_t = tf.expand_dims(x_seq[:,t,:,:], 1)
             z_t = self.encoder(x_t)
             z_seq.append(z_t)
+        # Apply temporal context normalization
+        z_seq_all_seg = []
+        for seg in range(len(self.task_seg)):
+            z_seq_all_seg.append(self.apply_context_norm(z_seq[:,self.task_seg[seg],:]))
         #stack embeddings along the first dimension (timesteps)
         z_seq = tf.stack(z_seq, 1)
         #skip context norm for now
@@ -64,8 +68,6 @@ class ESBN(tf.keras.Model):
                 # Read key
                 w_k = tf.keras.activations.softmax(tf.reduce_sum((z_t * M_v), 2, keepdims=True))
                 c_k = tf.keras.activations.sigmoid(tf.reduce_sum((z_t * M_v), 2, keepdims=True) * self.confidence_gain + self.confidence_bias)
-                # Work on broadcasting
-                # TODO
                 weighted_sum = tf.reduce_sum(w_k * tf.concat([M_k, c_k], axis=2), axis=1, keepdims=True)
                 key_r = g * weighted_sum
 
@@ -76,6 +78,14 @@ class ESBN(tf.keras.Model):
             else:
                 M_k = tf.concat([M_k, key_w], 1)
                 M_v = tf.concat([M_v, z_t], 1)
+
+            def apply_context_norm(self, z_seq):
+                eps = 1e-8
+                z_mu = z_seq.mean(1)
+                z_sigma = (z_seq.var(1) + eps).sqrt()
+                z_seq = (z_seq - z_mu.unsqueeze(1)) / z_sigma.unsqueeze(1)
+                z_seq = (z_seq * self.gamma) + self.beta
+                return z_seq
 
         return y_pred_linear, y_pred
     
