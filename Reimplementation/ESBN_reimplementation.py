@@ -20,7 +20,7 @@ class ESBN(tf.keras.Model):
         self.g_out = Dense(1, activation="sigmoid")
         self.confidence_gain = tf.Variable(1, trainable=True, dtype=tf.float32)
         self.confidence_bias = tf.Variable(0, trainable=True, dtype=tf.float32)
-        self.y_out = Dense(y_dim)
+        self.y_out = Dense(y_dim, activation="softmax")
 
         # Skip context normalization and parameter initialization for now
 
