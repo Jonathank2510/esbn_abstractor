@@ -18,11 +18,13 @@ class ESBN(tf.keras.Model):
         self.lstm = LSTM(self.hidden_size, return_state=True)
         self.key_w_out = Dense(self.key_size)
         self.g_out = Dense(1, activation="sigmoid")
-        self.confidence_gain = tf.Variable(1, trainable=True, dtype=tf.float32)
-        self.confidence_bias = tf.Variable(0, trainable=True, dtype=tf.float32)
+        self.confidence_gain = tf.Variable(1, dtype=tf.float32)
+        self.confidence_bias = tf.Variable(0, dtype=tf.float32)
         self.y_out = Dense(y_dim, activation="softmax")
 
-        # Skip context normalization and parameter initialization for now
+        # Context normalization parameters
+        self.gamma = tf.Variable(tf.ones(self.z_size))
+        self.beta = tf.Variable(tf.zeros(self.z_size))
 
 
     #@tf.function
@@ -34,12 +36,9 @@ class ESBN(tf.keras.Model):
             z_t = self.encoder(x_t)
             z_seq.append(z_t)
         # Apply temporal context normalization
-        #z_seq_all_seg = []
-        #for seg in range(len(self.task_seg)):
-        #    z_seq_all_seg.append(self.apply_context_norm(z_seq[:,self.task_seg[seg],:]))
+        z_seq = self.apply_context_norm(z_seq)
         #stack embeddings along the first dimension (timesteps)
         z_seq = tf.stack(z_seq, 1)
-        #skip context norm for now
         # Initialize retrieved key vector
         key_r = tf.zeros((x_seq.shape[0], 1, self.key_size + 1))
         self.M_k = []
@@ -56,7 +55,7 @@ class ESBN(tf.keras.Model):
                 z_t = tf.expand_dims(z_seq[:,t,:], 1)
             # Controller
             # LSTM
-            lstm_out, hidden, cell_state = self.lstm(key_r, initial_state=(cell_state, hidden)) #maybe add manual initialization
+            lstm_out, hidden, cell_state = self.lstm(key_r, initial_state=(cell_state, hidden))
             # Key output layers
             key_w = tf.expand_dims(self.key_w_out(lstm_out), 1)
             # Gates
@@ -82,14 +81,13 @@ class ESBN(tf.keras.Model):
                 M_k = tf.concat([M_k, key_w], 1)
                 M_v = tf.concat([M_v, z_t], 1)
 
-            #def apply_context_norm(self, z_seq):
-            #    eps = 1e-8
-            #    z_mu = tf.reduce_mean(z_seq, 1)
-            #    z_sigma = tf.math.sqrt(tf.math.reduce_variance(z_seq, 1) + eps)
-            #    z_seq = (z_seq - z_mu)
-            #    z_seq = (z_seq - z_mu) / z_sigma
-            #    z_seq = (z_seq * self.gamma) + self.beta
-            #    return z_seq
-
         return y_pred_linear, y_pred
+    
+    def apply_context_norm(self, z_seq):
+                eps = 1e-8
+                z_mu = tf.reduce_mean(z_seq, 1, keepdims=True)
+                z_sigma = tf.math.sqrt(tf.math.reduce_variance(z_seq, 1, keepdims=True) + eps)
+                z_seq = (z_seq - z_mu) / z_sigma
+                z_seq = (z_seq * self.gamma) + self.beta
+                return z_seq
     

@@ -1,6 +1,7 @@
 from ESBN_reimplementation import ESBN
 import tensorflow as tf
+import numpy as np
 
-model = ESBN(9)
-
-model.call(tf.ones((5, 4, 1, 36, 36)))
+task_seg = np.arange(9)
+for seg in range(len(task_seg)):
+    print(seg)
