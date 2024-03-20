@@ -71,6 +71,7 @@ class GlobalSelfAttention(BaseAttention):
     x = self.layernorm(x)
     return x
   
+
 class CausalSelfAttention(BaseAttention):
   def call(self, x):
     attn_output = self.mha(

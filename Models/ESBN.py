@@ -14,10 +14,10 @@ class ESBN(tf.keras.layers.Layer):
     
     # States are of the form (hidden, cell_state)
     #@tf.function()
-    def call(self, inputs, initial_key):
+    def call(self, inputs):
         M_k = tf.TensorArray(tf.float32, size=0, dynamic_size=True)
         M_v = tf.TensorArray(tf.float32, size=0, dynamic_size=True)
-        key_r = initial_key
+        key_r = tf.zeros((inputs.shape[0], 1, self.key_size + 1))
         # Initial states for LSTM
         hidden = tf.zeros((inputs.shape[0], self.hidden_size))
         cell_state = tf.zeros((inputs.shape[0], self.hidden_size))
@@ -46,5 +46,5 @@ class ESBN(tf.keras.layers.Layer):
             M_k.write(t, key_w)
             M_v.write(t, tf.squeeze(x, 1))
 
-        # Return last key from memory
+        # Return last state of lstm
         return lstm_out
