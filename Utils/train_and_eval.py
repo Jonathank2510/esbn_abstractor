@@ -11,7 +11,7 @@ test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy('test_accuracy')
 # Perform one epoch of training
 def train_step(model, x_seq, targets, optimizer, loss_fn):
 	with tf.GradientTape() as tape:
-		y_pred_linear, y_pred = model(x_seq)
+		y_pred_linear = model(x_seq)
 		loss = loss_fn(targets, y_pred_linear)
 	grads = tape.gradient(loss, model.trainable_variables)
 	optimizer.apply_gradients(zip(grads, model.trainable_variables))
@@ -23,7 +23,7 @@ def train_step(model, x_seq, targets, optimizer, loss_fn):
 def test_step(model, all_imgs, test_loader, loss_fn):
 	for seq_ind, y in test_loader:
 		x_seq = tf.gather(all_imgs, seq_ind)
-		y_pred_linear, y_pred = model(x_seq)
+		y_pred_linear = model(x_seq)
 		loss = loss_fn(y, y_pred_linear)
 		test_loss(loss)
 		test_accuracy(y, y_pred_linear)
