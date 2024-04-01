@@ -4,6 +4,8 @@ import math
 import numpy as np
 import builtins
 from itertools import combinations, permutations
+import tensorflow as tf
+from PIL import Image
 
 # Prevent python from saving out .pyc files
 sys.dont_write_bytecode = True
@@ -28,7 +30,17 @@ def n_comb(n, r):
 	return int(math.factorial(n) / (math.factorial(r) * math.factorial(n-r)))
 
 # Task generator
-def create_task(train_shapes, test_shapes, train_set_size, test_set_size, train_proportion, m_holdout=0, n_shapes=100):
+def create_task(train_set_size, test_set_size, train_proportion, m_holdout, n_shapes=100, train_batch_size=32, test_batch_size=32):
+
+	# Randomly assigns objects to training or test set
+	all_shapes = np.arange(n_shapes)
+	np.random.shuffle(all_shapes)
+	if m_holdout > 0:
+		train_shapes = all_shapes[m_holdout:]
+		test_shapes = all_shapes[:m_holdout]
+	else:
+		train_shapes = all_shapes
+		test_shapes = all_shapes
 	
 	# If m = 0, training and test sets are drawn from same set of shapes
 	if m_holdout == 0:
@@ -43,8 +55,8 @@ def create_task(train_shapes, test_shapes, train_set_size, test_set_size, train_
 			train_proportion = train_proportion
 			test_proportion = 1 - train_proportion
 			# Create training/test set sizes
-			train_set_size = np.round(train_proportion * total_trials).astype(np.int)
-			test_set_size = np.round(test_proportion * total_trials).astype(np.int)
+			train_set_size = np.round(train_proportion * total_trials).astype(int)
+			test_set_size = np.round(test_proportion * total_trials).astype(int)
 			
 	else:
 		# Total number of possible training trials
@@ -166,4 +178,24 @@ def create_task(train_shapes, test_shapes, train_set_size, test_set_size, train_
 	train_set = (np.array(train_MC_seq), np.array(train_MC_targ))
 	test_set = (np.array(test_MC_seq), np.array(test_MC_targ))
 
-	return train_set, test_set
+	# Load images
+	all_imgs = []
+	for i in range(n_shapes):
+		img_fname = "./imgs/" + str(i) + ".png"
+		img = tf.convert_to_tensor(np.array(Image.open(img_fname)), dtype=tf.float32) / 255.
+		all_imgs.append(img)
+	all_imgs = tf.stack(all_imgs)
+
+	def load_images(indices, label):
+		return (tf.gather(all_imgs, indices), label)
+	
+
+	# Create tf.Dataset objects
+	train_data = tf.data.Dataset.from_tensor_slices(train_set)
+	train_data = train_data.map(load_images)
+	train_data = train_data.shuffle(train_set_size).batch(train_batch_size, drop_remainder=True).prefetch(20)
+	test_data = tf.data.Dataset.from_tensor_slices(test_set)
+	test_data = test_data.map(load_images)
+	test_data = test_data.shuffle(test_set_size).batch(test_batch_size, drop_remainder=True).prefetch(20)
+
+	return train_data, test_data
