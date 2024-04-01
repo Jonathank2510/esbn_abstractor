@@ -1,11 +1,4 @@
 # Data Efficient Language Modeling using Emergent Symbol Binding
 
-In this project, we are trying to implement a data efficient language model using the ESBN architecture. First, we reimplement the original model from the paper in tensorflow and then we 
-adapt the model to work with text data and perform next word prediction.
-
-Recources:
-The Relational Bottleneck as an Inductive Bias for Efficient Abstraction
-
-Emergent Symbols Through Binding in External Memory
-
-A Memory-Augmented Neural Network Model of Abstract Rule Learning
+In this project we reimplement the Emergent Symbol Binding Network (Webb 2023) and then try to use it to augment a transformer with it. We want to see if introducing a seperate purely symbolic processing stream into a language model can increase performance on the scan dataset (scan citation)
+The different architectures used in this project can be found in the Models folder. The reimplementation of the experiment by (Webb 2023) is done in the reimplementation.ipynb notebook. The experiments on the scan task can be found in the scan_experiment.ipynb notebook. Data from the training runs can be analysed via tensorboard and it is stored in the logs folder.
