@@ -8,7 +8,7 @@ class ESBNLayer(tf.keras.layers.Layer):
         self.key_size = key_size
         self.hidden_size = hidden_size
         self.lstm_cell = tf.keras.layers.LSTMCell(hidden_size)
-        self.key_w_out = tf.keras.layers.Dense(key_size)
+        self.key_w_out = tf.keras.layers.Dense(key_size, activation="relu")
         self.g_out = tf.keras.layers.Dense(1, activation="sigmoid")
         self.confidence_gain = tf.Variable(1, dtype=tf.float32)
         self.confidence_bias = tf.Variable(0, dtype=tf.float32)
@@ -30,7 +30,7 @@ class ESBNLayer(tf.keras.layers.Layer):
 
 
         # Loop over timesteps
-        for t in tf.range(inputs.shape[1]):
+        for t in tf.range(tf.shape(inputs)[1]):
             # Get value at timestep t
             x = tf.expand_dims(inputs[:,t,:], 1)
             # Controller
@@ -64,7 +64,6 @@ class ESBNLayer(tf.keras.layers.Layer):
             
         # Return last state of lstm and external memory (optionally)
         if(self.return_memory):
-            pass
-            #return lstm_out, (tf.transpose(M_k.stack(), (1, 0, 2)), tf.transpose(M_v.stack(), (1, 0, 2)))
+            return lstm_out, (tf.transpose(M_k.stack(), (1, 0, 2)), tf.transpose(M_v.stack(), (1, 0, 2)))
         else:
             return lstm_out

@@ -103,7 +103,7 @@ class FeedForward(tf.keras.layers.Layer):
 
 class EncoderLayer(tf.keras.layers.Layer):
   def __init__(self,*, d_model, num_heads, dff, dropout_rate=0.1):
-    super().__init__()
+    super(EncoderLayer, self).__init__()
 
     self.self_attention = GlobalSelfAttention(
         num_heads=num_heads,
@@ -121,7 +121,7 @@ class EncoderLayer(tf.keras.layers.Layer):
 class Encoder(tf.keras.layers.Layer):
   def __init__(self, *, num_layers, d_model, num_heads,
                dff, vocab_size, dropout_rate=0.1):
-    super().__init__()
+    super(Encoder, self).__init__()
 
     self.d_model = d_model
     self.num_layers = num_layers

@@ -36,5 +36,5 @@ class Transformer(tf.keras.Model):
     except AttributeError:
       pass
 
-    # Return the final output and the attention weights.
+    # Return the final output
     return logits

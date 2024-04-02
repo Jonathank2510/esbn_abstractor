@@ -9,13 +9,11 @@ class Encoder_conv(tf.keras.Model):
         self.conv2 = Conv2D(32, 4, 2, padding="same")
         self.conv3 = Conv2D(32, 4, 2, padding="same")
         #Dense Layers
-        self.dense1 = Dense(256)
-        self.dense2 = Dense(128)
+        self.dense1 = Dense(256, activation="relu")
+        self.dense2 = Dense(128, activation="relu")
         # Flatten
         self.flat = tf.keras.layers.Flatten()
 
-
-    @tf.function
     def call(self, x):
         # Convolutional layers
         conv1_out = tf.keras.activations.relu(self.conv1(x))
@@ -29,7 +27,3 @@ class Encoder_conv(tf.keras.Model):
         # Output
         z = dense2_out
         return z
-    
-#pre-trained word embedding
-class Encoder_word(tf.keras.Model):
-    pass
