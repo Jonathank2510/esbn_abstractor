@@ -77,6 +77,112 @@ class ESBNDecoder(tf.keras.layers.Layer):
     return symbols
 
   
+class SymbolicCrossAttentionEncoderLayer(tf.keras.layers.Layer):
+  def __init__(self,*, d_model, num_heads, dff, dropout_rate=0.1):
+    super().__init__()
+
+    self.self_attention = CrossAttention(
+        num_heads=num_heads,
+        key_dim=d_model,
+        dropout=dropout_rate)
+
+    self.ffn = FeedForward(d_model, dff)
+
+  def call(self, s, x):
+    s = self.self_attention(s, x)
+    s = self.ffn(s)
+    return s
+
+
+class ESBNEncoder2(tf.keras.layers.Layer):
+  def __init__(self, *, num_layers, d_model, num_heads,
+               dff, vocab_size, dropout_rate=0.1):
+    super().__init__()
+
+    self.d_model = d_model
+    self.num_layers = num_layers
+    self.esbn_layer = ESBNLayer(key_size=d_model, hidden_size=32, return_memory=True)
+
+    self.pos_embedding = PositionalEmbedding(
+        vocab_size=vocab_size, d_model=d_model)
+
+    self.enc_layers = [
+        SymbolicCrossAttentionEncoderLayer(d_model=d_model,
+                     num_heads=num_heads,
+                     dff=dff,
+                     dropout_rate=dropout_rate)
+        for _ in range(num_layers)]
+    self.dropout = tf.keras.layers.Dropout(dropout_rate)
+
+  def call(self, x):
+    x = self.pos_embedding(x)
+
+    # Create symbols
+    lstm_out, (s, values) = self.esbn_layer(x)
+
+    # Add dropout.
+    s = self.dropout(s)
+
+    for i in range(self.num_layers):
+      s = self.enc_layers[i](s, x)
+
+    return s
+  
+
+  
+
+class ESBNTransformer3(tf.keras.Model):
+  def __init__(self, *, num_layers, d_model, num_heads, dff,
+               input_vocab_size, target_vocab_size, dropout_rate=0.1):
+    super().__init__()
+    self.encoder = Encoder(num_layers=num_layers, d_model=d_model,
+                           num_heads=num_heads, dff=dff,
+                           vocab_size=input_vocab_size,
+                           dropout_rate=dropout_rate)
+
+    self.decoder = Decoder(num_layers=num_layers, d_model=d_model,
+                           num_heads=num_heads, dff=dff,
+                           vocab_size=target_vocab_size,
+                           dropout_rate=dropout_rate)
+    
+    self.symbolic_decoder = Decoder(num_layers=num_layers, d_model=d_model,
+                                    num_heads=num_heads, dff=dff,
+                                    vocab_size=target_vocab_size,
+                                    dropout_rate=dropout_rate)
+    
+    self.esbn_encoder = ESBNEncoder2(num_layers=num_layers, d_model=d_model,
+                                    num_heads=num_heads, dff=dff,
+                                    vocab_size=input_vocab_size,
+                                    dropout_rate=dropout_rate)
+
+    self.final_layer = tf.keras.layers.Dense(target_vocab_size)
+
+  def call(self, inputs):
+    context, x  = inputs
+    context_symbols = self.esbn_encoder(context)
+    context = self.encoder(context)  
+
+    # Use cross-attention with ESBN - generated symbols
+    s = self.symbolic_decoder(x, context_symbols) 
+    # Use cross-attention with usual encoder
+    x = self.decoder(x, context)  
+
+    # Concatenate information streams
+    x = tf.concat([x, s], 2)
+
+    # Final linear layer output.
+    logits = self.final_layer(x)
+
+    try:
+      # Drop the keras mask, so it doesn't scale the losses/metrics.
+      # b/250038731
+      del logits._keras_mask
+    except AttributeError:
+      pass
+
+    # Return the final output and the attention weights.
+    return logits
+
 
 class ESBNTransformer2(tf.keras.Model):
   def __init__(self, *, num_layers, d_model, num_heads, dff,

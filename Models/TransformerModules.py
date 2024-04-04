@@ -1,4 +1,5 @@
 import tensorflow as tf
+from Models.ESBNLayer import ESBNLayer
 import numpy as np
 
 # Positional Encodings
@@ -16,6 +17,7 @@ def positional_encoding(length, depth):
       axis=-1) 
 
   return tf.cast(pos_encoding, dtype=tf.float32)
+
 
 # Embedding layer
 class PositionalEmbedding(tf.keras.layers.Layer):
@@ -36,6 +38,7 @@ class PositionalEmbedding(tf.keras.layers.Layer):
     x = x + self.pos_encoding[tf.newaxis, :length, :]
     return x
   
+
 # Attention layers
 class BaseAttention(tf.keras.layers.Layer):
   def __init__(self, **kwargs):
@@ -215,3 +218,130 @@ class Decoder(tf.keras.layers.Layer):
 
     # The shape of x is (batch_size, target_seq_len, d_model).
     return x
+
+
+# ESBNEncoder converts to sequence of symbols before encoding
+class ESBNEncoder(tf.keras.layers.Layer):
+  def __init__(self, *, num_layers, d_model, num_heads,
+               dff, vocab_size, dropout_rate=0.1):
+    super().__init__()
+
+    self.d_model = d_model
+    self.num_layers = num_layers
+    self.esbn_layer = ESBNLayer(key_size=d_model, hidden_size=32, return_memory=True)
+
+    self.pos_embedding = PositionalEmbedding(
+        vocab_size=vocab_size, d_model=d_model)
+
+    self.enc_layers = [
+        EncoderLayer(d_model=d_model,
+                     num_heads=num_heads,
+                     dff=dff,
+                     dropout_rate=dropout_rate)
+        for _ in range(num_layers)]
+    self.dropout = tf.keras.layers.Dropout(dropout_rate)
+
+  def call(self, x):
+    # `x` is token-IDs shape: (batch, seq_len)
+    x = self.pos_embedding(x)  # Shape `(batch_size, seq_len, d_model)`.
+
+    # Create symbols
+    lstm_out, (symbols, values) = self.esbn_layer(x)
+
+    # Add dropout.
+    symbols = self.dropout(symbols)
+
+    for i in range(self.num_layers):
+      symbols = self.enc_layers[i](symbols)
+
+    return symbols  # Shape `(batch_size, seq_len, d_model)`.
+  
+
+# ESBNDecoder converts to sequence of symols before decoding
+class ESBNDecoder(tf.keras.layers.Layer):
+  def __init__(self, *, num_layers, d_model, num_heads, dff, vocab_size,
+               dropout_rate=0.1):
+    super().__init__()
+
+    self.d_model = d_model
+    self.num_layers = num_layers
+    self.esbn_layer = ESBNLayer(key_size=d_model, hidden_size=32, return_memory=True)
+
+    self.pos_embedding = PositionalEmbedding(vocab_size=vocab_size,
+                                             d_model=d_model)
+    self.dropout = tf.keras.layers.Dropout(dropout_rate)
+    self.dec_layers = [
+        DecoderLayer(d_model=d_model, num_heads=num_heads,
+                     dff=dff, dropout_rate=dropout_rate)
+        for _ in range(num_layers)]
+
+    self.last_attn_scores = None
+
+  def call(self, x, context):
+    # `x` is token-IDs shape (batch, target_seq_len)
+    x = self.pos_embedding(x)  # (batch_size, target_seq_len, d_model)
+
+    # Create symbols
+    lstm_out, (symbols, values) = self.esbn_layer(x)
+
+    symbols = self.dropout(symbols)
+
+    for i in range(self.num_layers):
+      symbols  = self.dec_layers[i](symbols, context)
+
+    self.last_attn_scores = self.dec_layers[-1].last_attn_scores
+
+    # The shape of x is (batch_size, target_seq_len, d_model).
+    return symbols
+  
+# Symbolic Cross attention layer does relational processing using regular inputs and symbols
+class SymbolicCrossAttentionEncoderLayer(tf.keras.layers.Layer):
+  def __init__(self,*, d_model, num_heads, dff, dropout_rate=0.1):
+    super().__init__()
+
+    self.self_attention = CrossAttention(
+        num_heads=num_heads,
+        key_dim=d_model,
+        dropout=dropout_rate)
+
+    self.ffn = FeedForward(d_model, dff)
+
+  def call(self, s, x):
+    s = self.self_attention(s, x)
+    s = self.ffn(s)
+    return s
+  
+# This variant of the ESBNEncoder uses the SymbolicCrossAttentionLayer
+class ESBNEncoderCrossAttention(tf.keras.layers.Layer):
+  def __init__(self, *, num_layers, d_model, num_heads,
+               dff, vocab_size, dropout_rate=0.1):
+    super().__init__()
+
+    self.d_model = d_model
+    self.num_layers = num_layers
+    self.esbn_layer = ESBNLayer(key_size=d_model, hidden_size=32, return_memory=True)
+
+    self.pos_embedding = PositionalEmbedding(
+        vocab_size=vocab_size, d_model=d_model)
+
+    self.enc_layers = [
+        SymbolicCrossAttentionEncoderLayer(d_model=d_model,
+                     num_heads=num_heads,
+                     dff=dff,
+                     dropout_rate=dropout_rate)
+        for _ in range(num_layers)]
+    self.dropout = tf.keras.layers.Dropout(dropout_rate)
+
+  def call(self, x):
+    x = self.pos_embedding(x)
+
+    # Create symbols
+    lstm_out, (s, values) = self.esbn_layer(x)
+
+    # Add dropout.
+    s = self.dropout(s)
+
+    for i in range(self.num_layers):
+      s = self.enc_layers[i](s, x)
+
+    return s
