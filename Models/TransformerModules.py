@@ -1,5 +1,6 @@
 import tensorflow as tf
 from Models.ESBNLayer import ESBNLayer
+from Models.Attention import *
 import numpy as np
 
 # Positional Encodings
@@ -38,53 +39,6 @@ class PositionalEmbedding(tf.keras.layers.Layer):
     x = x + self.pos_encoding[tf.newaxis, :length, :]
     return x
   
-
-# Attention layers
-class BaseAttention(tf.keras.layers.Layer):
-  def __init__(self, **kwargs):
-    super().__init__()
-    self.mha = tf.keras.layers.MultiHeadAttention(**kwargs)
-    self.layernorm = tf.keras.layers.LayerNormalization()
-    self.add = tf.keras.layers.Add()
-
-class CrossAttention(BaseAttention):
-  def call(self, x, context):
-    attn_output, attn_scores = self.mha(
-        query=x,
-        key=context,
-        value=context,
-        return_attention_scores=True)
-
-    # Cache the attention scores for plotting later.
-    self.last_attn_scores = attn_scores
-
-    x = self.add([x, attn_output])
-    x = self.layernorm(x)
-
-    return x
-  
-
-class GlobalSelfAttention(BaseAttention):
-  def call(self, x):
-    attn_output = self.mha(
-        query=x,
-        value=x,
-        key=x)
-    x = self.add([x, attn_output])
-    x = self.layernorm(x)
-    return x
-  
-
-class CausalSelfAttention(BaseAttention):
-  def call(self, x):
-    attn_output = self.mha(
-        query=x,
-        value=x,
-        key=x,
-        use_causal_mask = True)
-    x = self.add([x, attn_output])
-    x = self.layernorm(x)
-    return x
   
 
 class FeedForward(tf.keras.layers.Layer):
@@ -185,12 +139,11 @@ class DecoderLayer(tf.keras.layers.Layer):
     x = self.ffn(x)  # Shape `(batch_size, seq_len, d_model)`.
     return x
   
-
-
-class Decoder(tf.keras.layers.Layer):
-  def __init__(self, *, num_layers, d_model, num_heads, dff, vocab_size,
-               dropout_rate=0.1):
-    super(Decoder, self).__init__()
+# Adjusted Decoder Layer that can use multiple contexts
+class MultiAttentionDecoder(tf.keras.layers.Layer):
+  def __init__(self, num_layers, d_model, num_heads, dff, vocab_size,
+               num_context, dropout_rate=0.1):
+    super().__init__()
 
     self.d_model = d_model
     self.num_layers = num_layers
@@ -199,149 +152,89 @@ class Decoder(tf.keras.layers.Layer):
                                              d_model=d_model)
     self.dropout = tf.keras.layers.Dropout(dropout_rate)
     self.dec_layers = [
-        DecoderLayer(d_model=d_model, num_heads=num_heads,
+        [DecoderLayer(d_model=d_model, num_heads=num_heads,
                      dff=dff, dropout_rate=dropout_rate)
-        for _ in range(num_layers)]
+        for _ in range(num_context)]
+    for _ in range(num_layers)]
 
     self.last_attn_scores = None
 
-  def call(self, x, context):
-    # `x` is token-IDs shape (batch, target_seq_len)
+  def call(self, inputs):
+    x = inputs[0]
+    contexts = inputs[1:]
     x = self.pos_embedding(x)  # (batch_size, target_seq_len, d_model)
 
     x = self.dropout(x)
 
     for i in range(self.num_layers):
-      x  = self.dec_layers[i](x, context)
+      for j, context in enumerate(contexts):
+        x  = self.dec_layers[i][j](x, context)
 
-    self.last_attn_scores = self.dec_layers[-1].last_attn_scores
 
     # The shape of x is (batch_size, target_seq_len, d_model).
     return x
 
 
-# ESBNEncoder converts to sequence of symbols before encoding
-class ESBNEncoder(tf.keras.layers.Layer):
-  def __init__(self, *, num_layers, d_model, num_heads,
-               dff, vocab_size, dropout_rate=0.1):
+class AbstracterLayer(tf.keras.layers.Layer):
+  def __init__(self, d_model, num_heads, dff, use_self_attention=False, dropout_rate=0.1):
     super().__init__()
+    self.use_self_attention = use_self_attention
+    self.relational_attention = RelationalAttention(num_heads=num_heads, 
+                                                    key_dim=d_model, 
+                                                    dropout=dropout_rate)
+    if self.use_self_attention:
+      self.self_attention = GlobalSelfAttention(num_heads=num_heads,
+                                                key_dim=d_model,
+                                                dropout=dropout_rate)
 
+    self.ffn = FeedForward(d_model, dff)
+
+  def call(self, symbols, inputs):
+    if self.use_self_attention:
+      symbols = self.self_attention(symbols)  
+    symbols = self.relational_attention(symbols, inputs)
+    symbols = self.ffn(symbols)
+    return symbols
+  
+  
+class Abstracter(tf.keras.layers.Layer):
+  def __init__(self, *, num_layers, d_model, num_heads,
+               dff, vocab_size, dropout_rate=0.1, use_self_attention=False, use_esbn=False):
+    super().__init__()
+    self.use_esbn = use_esbn
     self.d_model = d_model
     self.num_layers = num_layers
-    self.esbn_layer = ESBNLayer(key_size=d_model, hidden_size=32, return_memory=True)
 
     self.pos_embedding = PositionalEmbedding(
         vocab_size=vocab_size, d_model=d_model)
 
     self.enc_layers = [
-        EncoderLayer(d_model=d_model,
+        AbstracterLayer(d_model=d_model,
                      num_heads=num_heads,
                      dff=dff,
+                     use_self_attention=use_self_attention,
                      dropout_rate=dropout_rate)
         for _ in range(num_layers)]
     self.dropout = tf.keras.layers.Dropout(dropout_rate)
+    if self.use_esbn:
+      self.esbn_layer = ESBNLayer(key_size=d_model, hidden_size=32, return_memory=True)
+    else:
+      self.random_initializer = tf.keras.initializers.RandomNormal(0, 1)
+      self.symbols = tf.Variable(self.random_initializer(shape=(11, self.d_model)), trainable=True)
+  
 
   def call(self, x):
     # `x` is token-IDs shape: (batch, seq_len)
     x = self.pos_embedding(x)  # Shape `(batch_size, seq_len, d_model)`.
-
-    # Create symbols
-    lstm_out, (symbols, values) = self.esbn_layer(x)
-
-    # Add dropout.
-    symbols = self.dropout(symbols)
+    x = self.dropout(x)
+    if self.use_esbn:
+      lstm_out, (symbols, values) = self.esbn_layer(x)
+    else:
+      symbols = tf.zeros_like(x)
+      symbols += self.symbols[:tf.shape(x)[1],:]
 
     for i in range(self.num_layers):
-      symbols = self.enc_layers[i](symbols)
+      symbols = self.enc_layers[i](symbols, x)
 
     return symbols  # Shape `(batch_size, seq_len, d_model)`.
   
-
-# ESBNDecoder converts to sequence of symols before decoding
-class ESBNDecoder(tf.keras.layers.Layer):
-  def __init__(self, *, num_layers, d_model, num_heads, dff, vocab_size,
-               dropout_rate=0.1):
-    super().__init__()
-
-    self.d_model = d_model
-    self.num_layers = num_layers
-    self.esbn_layer = ESBNLayer(key_size=d_model, hidden_size=32, return_memory=True)
-
-    self.pos_embedding = PositionalEmbedding(vocab_size=vocab_size,
-                                             d_model=d_model)
-    self.dropout = tf.keras.layers.Dropout(dropout_rate)
-    self.dec_layers = [
-        DecoderLayer(d_model=d_model, num_heads=num_heads,
-                     dff=dff, dropout_rate=dropout_rate)
-        for _ in range(num_layers)]
-
-    self.last_attn_scores = None
-
-  def call(self, x, context):
-    # `x` is token-IDs shape (batch, target_seq_len)
-    x = self.pos_embedding(x)  # (batch_size, target_seq_len, d_model)
-
-    # Create symbols
-    lstm_out, (symbols, values) = self.esbn_layer(x)
-
-    symbols = self.dropout(symbols)
-
-    for i in range(self.num_layers):
-      symbols  = self.dec_layers[i](symbols, context)
-
-    self.last_attn_scores = self.dec_layers[-1].last_attn_scores
-
-    # The shape of x is (batch_size, target_seq_len, d_model).
-    return symbols
-  
-# Symbolic Cross attention layer does relational processing using regular inputs and symbols
-class SymbolicCrossAttentionEncoderLayer(tf.keras.layers.Layer):
-  def __init__(self,*, d_model, num_heads, dff, dropout_rate=0.1):
-    super().__init__()
-
-    self.self_attention = CrossAttention(
-        num_heads=num_heads,
-        key_dim=d_model,
-        dropout=dropout_rate)
-
-    self.ffn = FeedForward(d_model, dff)
-
-  def call(self, s, x):
-    s = self.self_attention(s, x)
-    s = self.ffn(s)
-    return s
-  
-# This variant of the ESBNEncoder uses the SymbolicCrossAttentionLayer
-class ESBNEncoderCrossAttention(tf.keras.layers.Layer):
-  def __init__(self, *, num_layers, d_model, num_heads,
-               dff, vocab_size, dropout_rate=0.1):
-    super().__init__()
-
-    self.d_model = d_model
-    self.num_layers = num_layers
-    self.esbn_layer = ESBNLayer(key_size=d_model, hidden_size=32, return_memory=True)
-
-    self.pos_embedding = PositionalEmbedding(
-        vocab_size=vocab_size, d_model=d_model)
-
-    self.enc_layers = [
-        SymbolicCrossAttentionEncoderLayer(d_model=d_model,
-                     num_heads=num_heads,
-                     dff=dff,
-                     dropout_rate=dropout_rate)
-        for _ in range(num_layers)]
-    self.dropout = tf.keras.layers.Dropout(dropout_rate)
-
-  def call(self, x):
-    x = self.pos_embedding(x)
-
-    # Create symbols
-    lstm_out, (s, values) = self.esbn_layer(x)
-
-    # Add dropout.
-    s = self.dropout(s)
-
-    for i in range(self.num_layers):
-      s = self.enc_layers[i](s, x)
-
-    return s
