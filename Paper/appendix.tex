@@ -1,0 +1,22 @@
+\section{Appendix}
+\subsection{Code Availability}
+All the code used to create the experiments can be accessed via \hyperlink{https://github.com/Jonathank2510/esbn_abstractor/tree/main}{Github}
+
+\subsection{Distribution-of-Three Experiment}
+\subsubsection{Dataset Generation}
+The dataset generation procedure was adapted from \textcite{webb_emergent_2021} and we generated the datasets from scratch for both the m = 0 and m = 95 condition. For the m = 0 condition, the train set size was 10000, for the m = 95 condition it was 320 since no more permutations can be produced from five shapes. Test set size was 10000 for both condition.
+\subsubsection{Hyperparameters}
+For the first part of the experiment, we have chosen the same hyperparameters as \textcite{webb_emergent_2021} in order to properly recreate the experiment. The image encoder consists of three convolutional layers with 32 filters each and two dense layers with 256 and 128 units. Both of the dense layers use the relu activation function and we use a simple flatten layer to pass the output of the last convolutional layer to the dense layers. \newline
+The original model uses an embedding size of 128, a key size of 256 and a hidden size of 512 for the LSTM controller. \newline
+For all conditions, we used the Adam \textcite{kingma_adam_2017} optimizer with a learning rate of 0.001. In the m = 0 condition, we trained for 10 epochs and for the m = 95 condition, we trained for 20 epochs. For all condition, a batch size of 32 was used both for training and evaluation.
+\subsubsection{Model evaluation}
+For the m = 95 condition, we performed a single training run and evaluated its performance on the batch level. For the key size evaluation, we performed ten training runs for each condition and used the mean and standard deviation of epoch accuracy to compare models.
+
+\subsection{Zero-Shot Generalization on Language Tasks}
+\subsubsection{Dataset}
+We tested our models on the addprim\_jump split of the scan \textcite{lake_generalization_2018} dataset. The dataset consists of 14,670 examples for training and 7,706 for evaluation.
+\subsubsection{Hyperparameters}
+All the models had two layers, an embedding depth of 32, 64 units in the feed forward layers and four attention heads. For each attention block, we used dropout with a rate of 0.1. Also, we use layer normalization and addition of residual connections for better trainability. \newline
+We trained for 20 epochs using the Adam \textcite{kingma_adam_2017} optimizer with a learning rate of 0.001 and a batch size of 32.
+\subsection{Model evaluation}
+We evaluated the mean masked accuracy for five training runs for each model.

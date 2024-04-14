@@ -1,0 +1,67 @@
+%%%%%%%%%%%%%%%%%% DO NOT TOUCH THIS FILE %%%%%%%%%%%%%%%%%%%%%% DO NOT TOUCH THIS FILE%%%%%%%%%%%%%%%%%%%%
+\documentclass[11pt, twoside]{article} 
+% Formatting options
+\usepackage[a4paper]{geometry}
+\geometry{left=25mm, right=25mm, bottom = 30mm}
+
+\usepackage[utf8]{inputenc}
+
+% positioning of images
+\usepackage[export]{adjustbox}
+\usepackage{wrapfig}
+\usepackage{transparent}
+% Apa reference style
+% use textcite for in-text references and parencite for parental references
+% formatting of hyperlinks for URL coded in blue
+\usepackage{url}
+\usepackage{hyperref}
+% break lines in captions
+\usepackage{caption}
+%insert pdf to appendix
+\usepackage{pdfpages}
+% title page
+\usepackage{fancyhdr}
+\usepackage[dvipsnames]{xcolor}
+% define color from university template
+\definecolor{uos_red}{RGB}{172, 6, 25}
+\definecolor{uos_yellow}{RGB}{251, 185, 0}
+\definecolor{uos_greay}{RGB}{207, 207, 207}
+\definecolor{cssj_purple}{RGB}{79, 8, 123}
+\definecolor{cssj_orange}{RGB}{212, 112, 59}
+
+\hypersetup{colorlinks,
+    linkcolor={cssj_purple},
+    citecolor={cssj_purple},
+    urlcolor={cssj_purple!80!black}
+}
+% colour package for in-text colour use
+\usepackage{eso-pic, graphicx}
+% references
+\usepackage[natbib=true,backend=biber,sorting=nyt,style=apa,dateabbrev=false]{biblatex}
+\renewcommand*{\bibfont}{\fontsize{10}{12}\selectfont}
+% add your references to this file
+\addbibresource{references.bib}
+
+% colored box packages
+\usepackage{tikz,lipsum,lmodern}
+\usepackage[most]{tcolorbox}
+
+
+
+%------------------HEADER---------------------%
+\pagestyle{fancyplain}
+\fancyhead[L]{{Implementing Artificial Neural Networks with TensorFlow}}
+\fancyhead[R]{{ESBN Transformer}}
+\fancyfoot[C]{\thepage}
+\renewcommand*\familydefault{\sfdefault} 
+%------------------HEADER---------------------%
+
+
+
+\begin{document}
+\input{text_body}
+\printbibliography[]{}
+\newpage
+\input{appendix}
+
+\end{document}
